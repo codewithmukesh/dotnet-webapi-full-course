@@ -13,10 +13,11 @@ public static class EventEndpoints
 
         group.MapGet("/{id:guid}", GetById).WithName(nameof(GetById));
 
-        group.MapPost("/", (CreateEventRequest request) =>
+        group.MapPost("/", (CreateEventRequest request, ILoggerFactory loggerFactory) =>
         {
             var created = new EventResponse(Guid.CreateVersion7(), request.Title, request.Venue, request.StartsAt);
             Events.Add(created);
+            loggerFactory.CreateLogger("Events").EventCreated(created.Title, created.Id, created.Venue);
             return TypedResults.CreatedAtRoute(created, nameof(GetById), new { id = created.Id });
         });
 
