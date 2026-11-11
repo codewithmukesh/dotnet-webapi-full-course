@@ -14,6 +14,7 @@ public sealed class Event
     public string? Description { get; set; }
     public required Venue Venue { get; set; }
     public DateTimeOffset StartsAt { get; set; }
+    public Guid OrganizerId { get; init; }
     public EventStatus Status { get; set; } = EventStatus.Draft;
     public DateTimeOffset CreatedAt { get; init; }
 

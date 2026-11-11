@@ -18,6 +18,24 @@ internal sealed partial class GlobalExceptionHandler(
             return true;
         }
 
+        // Malformed JSON, wrong types, missing body: the CLIENT sent a bad request. That's a 400, not our 500.
+        if (exception is BadHttpRequestException badRequest)
+        {
+            LogBadRequest(logger, httpContext.Request.Method, httpContext.Request.Path.Value ?? "/", badRequest.Message);
+            httpContext.Response.StatusCode = badRequest.StatusCode;
+            return await problemDetails.TryWriteAsync(new ProblemDetailsContext
+            {
+                HttpContext = httpContext,
+                Exception = exception,
+                ProblemDetails = new ProblemDetails
+                {
+                    Status = badRequest.StatusCode,
+                    Title = "The request body is not valid.",
+                    Detail = "Check the JSON shape and value types against the API reference.",
+                },
+            });
+        }
+
         // Full details go to the logs, with the same traceId the client gets.
         LogUnhandled(logger, exception, httpContext.Request.Method, httpContext.Request.Path.Value ?? "/");
 
@@ -34,6 +52,9 @@ internal sealed partial class GlobalExceptionHandler(
             },
         });
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Bad request for {Method} {Path}: {Reason}")]
+    private static partial void LogBadRequest(ILogger logger, string method, string path, string reason);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Unhandled exception for {Method} {Path}")]
     private static partial void LogUnhandled(ILogger logger, Exception exception, string method, string path);

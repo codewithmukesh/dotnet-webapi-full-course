@@ -9,7 +9,6 @@ public sealed class BookTicketRequestValidator : AbstractValidator<BookTicketReq
     public BookTicketRequestValidator(IOptions<TicketingOptions> options)
     {
         RuleFor(x => x.TicketTypeId).NotEmpty();
-        RuleFor(x => x.UserId).NotEmpty();
         RuleFor(x => x.Quantity).InclusiveBetween(1, options.Value.MaxTicketsPerBooking);
     }
 }

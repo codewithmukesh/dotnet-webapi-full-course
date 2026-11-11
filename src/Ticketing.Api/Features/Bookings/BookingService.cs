@@ -3,13 +3,16 @@ using Ticketing.Api.Common;
 using Ticketing.Api.Data;
 using Ticketing.Api.Data.Configurations;
 using Ticketing.Api.Domain;
+using Ticketing.Api.Features.Auth;
 
 namespace Ticketing.Api.Features.Bookings;
 
-public sealed class BookingService(TicketingDbContext db, TimeProvider clock)
+public sealed class BookingService(TicketingDbContext db, CurrentUser user, TimeProvider clock)
 {
     public async Task<Result<BookingResponse>> BookAsync(BookTicketRequest request, CancellationToken ct)
     {
+        var userId = user.Id;
+
         // State checks: things a validator can't know without the database.
         var ticketType = await db.TicketTypes
             .AsNoTracking()
@@ -32,7 +35,7 @@ public sealed class BookingService(TicketingDbContext db, TimeProvider clock)
         }
 
         var alreadyBooked = await db.Bookings
-            .Where(b => b.UserId == request.UserId && b.TicketTypeId == request.TicketTypeId && b.Status == BookingStatus.Confirmed)
+            .Where(b => b.UserId == userId && b.TicketTypeId == request.TicketTypeId && b.Status == BookingStatus.Confirmed)
             .SumAsync(b => b.Quantity, ct);
 
         if (alreadyBooked + request.Quantity > ticketType.MaxPerUser)
@@ -56,7 +59,7 @@ public sealed class BookingService(TicketingDbContext db, TimeProvider clock)
         var booking = new Booking
         {
             TicketTypeId = request.TicketTypeId,
-            UserId = request.UserId,
+            UserId = userId,
             Quantity = request.Quantity,
             CreatedAt = clock.GetUtcNow(),
         };
@@ -68,8 +71,9 @@ public sealed class BookingService(TicketingDbContext db, TimeProvider clock)
         return booking.ToResponse(ticketType);
     }
 
-    public async Task<Result> CancelAsync(Guid bookingId, Guid userId, CancellationToken ct)
+    public async Task<Result> CancelAsync(Guid bookingId, CancellationToken ct)
     {
+        var userId = user.Id;
         var booking = await db.Bookings
             .Include(b => b.TicketType).ThenInclude(t => t.Event)
             .FirstOrDefaultAsync(b => b.Id == bookingId && b.UserId == userId, ct);
@@ -103,8 +107,10 @@ public sealed class BookingService(TicketingDbContext db, TimeProvider clock)
         return Result.Success();
     }
 
-    public async Task<List<BookingResponse>> ListForUserAsync(Guid userId, CancellationToken ct) =>
-        await db.Bookings
+    public async Task<List<BookingResponse>> ListMineAsync(CancellationToken ct)
+    {
+        var userId = user.Id;
+        return await db.Bookings
             .IgnoreQueryFilters([EventConfiguration.NotCancelledFilter]) // show bookings for cancelled events too
             .Where(b => b.UserId == userId)
             .OrderByDescending(b => b.CreatedAt)
@@ -119,4 +125,5 @@ public sealed class BookingService(TicketingDbContext db, TimeProvider clock)
                 b.Status.ToString(),
                 b.CreatedAt))
             .ToListAsync(ct);
+    }
 }

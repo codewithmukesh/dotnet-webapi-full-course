@@ -2,8 +2,7 @@ using Ticketing.Api.Domain;
 
 namespace Ticketing.Api.Features.Bookings;
 
-// UserId comes from the request body until chapter 8 replaces it with the logged-in user.
-public sealed record BookTicketRequest(Guid TicketTypeId, Guid UserId, int Quantity);
+public sealed record BookTicketRequest(Guid TicketTypeId, int Quantity);
 
 public sealed record BookingResponse(
     Guid Id,

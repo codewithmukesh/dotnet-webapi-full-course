@@ -8,6 +8,7 @@ public static class ResultExtensions
         var status = error.Type switch
         {
             ErrorType.Validation => StatusCodes.Status400BadRequest,
+            ErrorType.Unauthorized => StatusCodes.Status401Unauthorized,
             ErrorType.NotFound => StatusCodes.Status404NotFound,
             ErrorType.Conflict => StatusCodes.Status409Conflict,
             ErrorType.Forbidden => StatusCodes.Status403Forbidden,

@@ -1,9 +1,11 @@
+using System.Text.Json.Serialization;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 using Serilog;
 using Ticketing.Api.Common;
 using Ticketing.Api.Data;
+using Ticketing.Api.Features.Auth;
 using Ticketing.Api.Features.Bookings;
 using Ticketing.Api.Features.Events;
 
@@ -31,14 +33,19 @@ var connectionString = builder.Configuration.GetConnectionString("Database")
 builder.Services.AddDbContext<TicketingDbContext>(options => options.UseNpgsql(connectionString));
 
 builder.Services.AddSingleton(TimeProvider.System);
+// Enums as "Organizer", not 1, both in requests and responses (and in the OpenAPI schema).
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
 builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 
+builder.Services.AddAuthFeature();
 builder.Services.AddEventFeature();
 builder.Services.AddBookingFeature();
 
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options => options.AddDocumentTransformer<BearerSecuritySchemeTransformer>());
 
 var app = builder.Build();
 
@@ -55,6 +62,10 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapAuthEndpoints();
 app.MapEventEndpoints();
 app.MapBookingEndpoints();
 
