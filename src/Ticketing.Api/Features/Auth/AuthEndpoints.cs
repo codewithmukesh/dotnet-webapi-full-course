@@ -56,11 +56,13 @@ public static class AuthEndpoints
 
         group.MapPost("/register", async (RegisterRequest request, AuthService auth, CancellationToken ct) =>
             (await auth.RegisterAsync(request, ct)).ToOk())
-        .WithValidation<RegisterRequest>();
+        .WithValidation<RegisterRequest>()
+        .RequireRateLimiting(RateLimiting.Auth);
 
         group.MapPost("/login", async (LoginRequest request, AuthService auth, CancellationToken ct) =>
             (await auth.LoginAsync(request, ct)).ToOk())
-        .WithValidation<LoginRequest>();
+        .WithValidation<LoginRequest>()
+        .RequireRateLimiting(RateLimiting.Auth);
 
         group.MapPost("/refresh", async (RefreshRequest request, AuthService auth, CancellationToken ct) =>
             (await auth.RefreshAsync(request, ct)).ToOk())
