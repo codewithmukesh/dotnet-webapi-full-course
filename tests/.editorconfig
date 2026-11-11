@@ -1,0 +1,4 @@
+# Test-only rules. Applies to everything under tests/, on top of the root .editorconfig.
+[*.cs]
+# Test names read as sentences: Fifty_parallel_bookings_for_ten_seats_sell_exactly_ten.
+dotnet_diagnostic.CA1707.severity = none
