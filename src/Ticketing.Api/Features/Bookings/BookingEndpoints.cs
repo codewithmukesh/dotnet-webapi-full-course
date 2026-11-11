@@ -14,7 +14,8 @@ public static class BookingEndpoints
 
         group.MapPost("/", async (BookTicketRequest request, BookingService bookings, CancellationToken ct) =>
             (await bookings.BookAsync(request, ct)).ToOk())
-        .WithValidation<BookTicketRequest>();
+        .WithValidation<BookTicketRequest>()
+        .RequireRateLimiting(RateLimiting.Bookings);
 
         group.MapGet("/me", async (BookingService bookings, CancellationToken ct) =>
             TypedResults.Ok(await bookings.ListMineAsync(ct)));

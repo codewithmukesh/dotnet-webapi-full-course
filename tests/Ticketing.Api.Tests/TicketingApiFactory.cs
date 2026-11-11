@@ -30,6 +30,7 @@ public sealed class TicketingApiFactory : WebApplicationFactory<Program>, IAsync
         builder.UseSetting("ConnectionStrings:Redis", _redis.GetConnectionString());
         builder.UseSetting("Jwt:SigningKey", "test-only-signing-key-0123456789-0123456789");
         builder.UseSetting("Serilog:MinimumLevel:Default", "Warning"); // quiet test output
+        builder.UseSetting("RateLimits:AuthPerIp", "10000"); // every test user signs up from the same in-memory "IP"
     }
 
     public override async ValueTask DisposeAsync()

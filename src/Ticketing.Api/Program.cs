@@ -2,8 +2,10 @@ using System.Text.Json.Serialization;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
+using Microsoft.Extensions.Caching.StackExchangeRedis;
 using Scalar.AspNetCore;
 using Serilog;
+using StackExchange.Redis;
 using Ticketing.Api.Common;
 using Ticketing.Api.Data;
 using Ticketing.Api.Features.Auth;
@@ -28,15 +30,26 @@ builder.Services.AddOptions<TicketingOptions>()
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
-var connectionString = builder.Configuration.GetConnectionString("Database")
+// PostgreSQL
+var databaseConnection = builder.Configuration.GetConnectionString("Database")
     ?? throw new InvalidOperationException("Connection string 'Database' is missing.");
 
-builder.Services.AddDbContext<TicketingDbContext>(options => options.UseNpgsql(connectionString));
+builder.Services.AddDbContext<TicketingDbContext>(options => options.UseNpgsql(databaseConnection));
 
-// Redis is the shared L2 cache. HybridCache finds it automatically (it's the registered IDistributedCache).
-builder.Services.AddStackExchangeRedisCache(options =>
-    options.Configuration = builder.Configuration.GetConnectionString("Redis"));
+// Redis: ONE shared connection for the cache and the health check.
+var redisOptions = ConfigurationOptions.Parse(builder.Configuration.GetConnectionString("Redis")
+    ?? throw new InvalidOperationException("Connection string 'Redis' is missing."));
+redisOptions.AbortOnConnectFail = false; // boot even if Redis is down; /health/ready reports it
+redisOptions.ConnectTimeout = 2000;      // ms. The 5 s default makes EVERY request wait 5 s when Redis is down.
+redisOptions.SyncTimeout = 1000;
+redisOptions.AsyncTimeout = 1000;
 
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisOptions));
+builder.Services.AddStackExchangeRedisCache(_ => { });
+builder.Services.AddOptions<RedisCacheOptions>()
+    .Configure<IConnectionMultiplexer>((options, redis) => options.ConnectionMultiplexerFactory = () => Task.FromResult(redis));
+
+// HybridCache: memory (L1) + Redis (L2). It picks up Redis as the registered IDistributedCache.
 builder.Services.AddHybridCache(options => options.DefaultEntryOptions = new HybridCacheEntryOptions
 {
     Expiration = TimeSpan.FromSeconds(30),           // Redis
@@ -44,6 +57,7 @@ builder.Services.AddHybridCache(options => options.DefaultEntryOptions = new Hyb
 });
 
 builder.Services.AddSingleton(TimeProvider.System);
+
 // Enums as "Organizer", not 1, both in requests and responses (and in the OpenAPI schema).
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
@@ -51,6 +65,8 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddTicketingRateLimiting();
+builder.Services.AddTicketingHealthChecks();
 
 builder.Services.AddAuthFeature();
 builder.Services.AddEventFeature();
@@ -76,6 +92,10 @@ app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// After authentication, so the booking limiter can partition by user id.
+app.UseRateLimiter();
+
+app.MapTicketingHealthChecks();
 app.MapAuthEndpoints();
 app.MapEventEndpoints();
 app.MapBookingEndpoints();
