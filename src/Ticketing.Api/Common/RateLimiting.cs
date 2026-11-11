@@ -96,7 +96,7 @@ public static class RateLimiting
     private static RateLimitOptions Limits(HttpContext context) =>
         context.RequestServices.GetRequiredService<IOptions<RateLimitOptions>>().Value;
 
-    // Behind a proxy this is the proxy's IP. Chapter 14 adds forwarded headers for the real client IP.
+    // The real client IP once UseForwardedHeaders has run (see ProxySupport.cs).
     private static string ClientIp(HttpContext context) =>
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 }
