@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using StackExchange.Redis;
 using Ticketing.Api.Data;
@@ -32,10 +33,19 @@ public static class HealthChecks
 
 internal sealed class DatabaseHealthCheck(TicketingDbContext db) : IHealthCheck
 {
-    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default) =>
-        await db.Database.CanConnectAsync(cancellationToken)
+    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+    {
+        if (!await db.Database.CanConnectAsync(cancellationToken))
+        {
+            return HealthCheckResult.Unhealthy("Cannot connect to PostgreSQL.");
+        }
+
+        // Connected is not enough: on a fresh database every query fails until the migration script runs.
+        var pending = (await db.Database.GetPendingMigrationsAsync(cancellationToken)).Count();
+        return pending == 0
             ? HealthCheckResult.Healthy()
-            : HealthCheckResult.Unhealthy("Cannot connect to PostgreSQL.");
+            : HealthCheckResult.Unhealthy($"{pending} pending migration(s). Apply the migration script.");
+    }
 }
 
 internal sealed class RedisHealthCheck(IConnectionMultiplexer redis) : IHealthCheck
