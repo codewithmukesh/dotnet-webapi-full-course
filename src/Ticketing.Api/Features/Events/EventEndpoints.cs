@@ -2,31 +2,30 @@ namespace Ticketing.Api.Features.Events;
 
 public static class EventEndpoints
 {
-    // Temporary in-memory store. Chapter 4 replaces it with EF Core + PostgreSQL.
-    private static readonly List<EventResponse> Events = [];
+    public static IServiceCollection AddEventFeature(this IServiceCollection services)
+    {
+        services.AddSingleton<IEventStore, InMemoryEventStore>();
+        services.AddScoped<EventService>();
+        return services;
+    }
 
     public static IEndpointRouteBuilder MapEventEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/events").WithTags("Events");
 
-        group.MapGet("/", () => TypedResults.Ok(Events));
+        group.MapGet("/", (EventService events) => TypedResults.Ok(events.List()));
 
         group.MapGet("/{id:guid}", GetById).WithName(nameof(GetById));
 
-        group.MapPost("/", (CreateEventRequest request, ILoggerFactory loggerFactory) =>
+        group.MapPost("/", (CreateEventRequest request, EventService events) =>
         {
-            var created = new EventResponse(Guid.CreateVersion7(), request.Title, request.Venue, request.StartsAt);
-            Events.Add(created);
-            loggerFactory.CreateLogger("Events").EventCreated(created.Title, created.Id, created.Venue);
+            var created = events.Create(request);
             return TypedResults.CreatedAtRoute(created, nameof(GetById), new { id = created.Id });
         });
 
         return app;
     }
 
-    private static Results<Ok<EventResponse>, NotFound> GetById(Guid id)
-    {
-        var found = Events.FirstOrDefault(e => e.Id == id);
-        return found is null ? TypedResults.NotFound() : TypedResults.Ok(found);
-    }
+    private static Results<Ok<EventResponse>, NotFound> GetById(Guid id, EventService events) =>
+        events.Get(id) is { } found ? TypedResults.Ok(found) : TypedResults.NotFound();
 }

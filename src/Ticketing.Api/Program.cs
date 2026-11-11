@@ -5,6 +5,13 @@ using Ticketing.Api.Features.Events;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// On by default only in Development. Turn it on everywhere so lifetime bugs fail at boot.
+builder.Host.UseDefaultServiceProvider(options =>
+{
+    options.ValidateScopes = true;
+    options.ValidateOnBuild = true;
+});
+
 builder.Services.AddSerilog((services, logger) => logger
     .ReadFrom.Configuration(builder.Configuration)
     .ReadFrom.Services(services));
@@ -13,6 +20,9 @@ builder.Services.AddOptions<TicketingOptions>()
     .BindConfiguration(TicketingOptions.SectionName)
     .ValidateDataAnnotations()
     .ValidateOnStart();
+
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddEventFeature();
 
 builder.Services.AddOpenApi();
 
