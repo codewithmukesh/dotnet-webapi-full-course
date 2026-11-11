@@ -87,7 +87,9 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference();
 }
 
-app.UseHttpsRedirection();
+// No UseHttpsRedirection: in production TLS ends at the reverse proxy (chapter 14).
+// The container only listens on HTTP 8080, so the middleware had no HTTPS port and just logged
+// "Failed to determine the https port for redirect" on every boot.
 
 app.UseAuthentication();
 app.UseAuthorization();

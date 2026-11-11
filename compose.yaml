@@ -9,11 +9,42 @@ services:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ticketing"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   redis:
     image: redis:8-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # The API itself. Behind a profile, so `docker compose up -d` still starts only
+  # Postgres + Redis for day-to-day work with `dotnet run`.
+  # Full stack: docker compose --profile app up -d --build
+  api:
+    profiles: ["app"]
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      # Inside the compose network the hosts are the service names, not localhost.
+      ConnectionStrings__Database: "Host=postgres;Port=5432;Database=ticketing;Username=postgres;Password=postgres"
+      ConnectionStrings__Redis: "redis:6379"
+      # Local demo only. In production this comes from a secret store, never from a file in git.
+      Jwt__SigningKey: "compose-demo-signing-key-not-for-production-0123456789"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
   postgres-data:
