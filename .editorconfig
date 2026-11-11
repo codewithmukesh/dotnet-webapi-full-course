@@ -387,3 +387,12 @@ dotnet_naming_style.s_camelcase.required_suffix =
 dotnet_naming_style.s_camelcase.word_separator = 
 dotnet_naming_style.s_camelcase.capitalization = camel_case
 
+
+# Project decisions
+[*.cs]
+# CA1716: "Event" is a Visual Basic keyword. This API is C# only, and Event is the domain word.
+dotnet_diagnostic.CA1716.severity = none
+
+# EF Core migrations are generated code: keep analyzers off them.
+[**/Migrations/*.cs]
+generated_code = true
