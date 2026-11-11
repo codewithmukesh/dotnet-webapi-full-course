@@ -18,6 +18,11 @@ internal sealed class BookingConfiguration : IEntityTypeConfiguration<Booking>
             .HasForeignKey(b => b.TicketTypeId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        builder.HasOne<User>()
+            .WithMany()
+            .HasForeignKey(b => b.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasQueryFilter(EventConfiguration.NotCancelledFilter, b => b.TicketType.Event.Status != EventStatus.Cancelled);
 
         builder.HasIndex(b => new { b.UserId, b.TicketTypeId });

@@ -9,18 +9,18 @@ public static class BookingEndpoints
 
     public static IEndpointRouteBuilder MapBookingEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/bookings").WithTags("Bookings");
+        // Any logged-in user can book. Who they are comes from the token, never from the request body.
+        var group = app.MapGroup("/api/bookings").WithTags("Bookings").RequireAuthorization();
 
         group.MapPost("/", async (BookTicketRequest request, BookingService bookings, CancellationToken ct) =>
             (await bookings.BookAsync(request, ct)).ToOk())
         .WithValidation<BookTicketRequest>();
 
-        // userId as a query parameter is temporary: chapter 8 takes it from the access token.
-        group.MapGet("/", async (Guid userId, BookingService bookings, CancellationToken ct) =>
-            TypedResults.Ok(await bookings.ListForUserAsync(userId, ct)));
+        group.MapGet("/me", async (BookingService bookings, CancellationToken ct) =>
+            TypedResults.Ok(await bookings.ListMineAsync(ct)));
 
-        group.MapPost("/{id:guid}/cancel", async (Guid id, Guid userId, BookingService bookings, CancellationToken ct) =>
-            (await bookings.CancelAsync(id, userId, ct)).ToNoContent());
+        group.MapPost("/{id:guid}/cancel", async (Guid id, BookingService bookings, CancellationToken ct) =>
+            (await bookings.CancelAsync(id, ct)).ToNoContent());
 
         return app;
     }

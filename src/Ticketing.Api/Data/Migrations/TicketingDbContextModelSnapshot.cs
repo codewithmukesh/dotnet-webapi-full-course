@@ -17,7 +17,7 @@ partial class TicketingDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261125170802_AddTicketTypeConcurrencyToken";
+    public override string LastMigrationId => "20261125170808_AddUsersAndAuth";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -85,6 +85,10 @@ partial class TicketingDbContextModelSnapshot : ModelSnapshot
                     .HasColumnType("character varying(4000)")
                     .HasColumnName("description");
 
+                b.Property<Guid>("OrganizerId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("organizer_id");
+
                 b.Property<DateTimeOffset>("StartsAt")
                     .HasColumnType("timestamp with time zone")
                     .HasColumnName("starts_at");
@@ -121,10 +125,59 @@ partial class TicketingDbContextModelSnapshot : ModelSnapshot
                 b.HasKey("Id")
                     .HasName("pk_events");
 
+                b.HasIndex("OrganizerId")
+                    .HasDatabaseName("ix_events_organizer_id");
+
                 b.HasIndex("StartsAt", "Id")
                     .HasDatabaseName("ix_events_starts_at_id");
 
                 b.ToTable("events");
+            });
+
+        modelBuilder.Entity("Ticketing.Api.Domain.RefreshToken", b =>
+            {
+                b.Property<Guid>("Id")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("uuid")
+                    .HasColumnName("id");
+
+                b.Property<DateTimeOffset>("CreatedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("created_at");
+
+                b.Property<DateTimeOffset>("ExpiresAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("expires_at");
+
+                b.Property<Guid?>("ReplacedById")
+                    .HasColumnType("uuid")
+                    .HasColumnName("replaced_by_id");
+
+                b.Property<DateTimeOffset?>("RevokedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("revoked_at");
+
+                b.Property<string>("TokenHash")
+                    .IsRequired()
+                    .HasMaxLength(64)
+                    .HasColumnType("character varying(64)")
+                    .HasColumnName("token_hash");
+
+                b.Property<Guid>("UserId")
+                    .HasColumnType("uuid")
+                    .HasColumnName("user_id");
+
+                b.HasKey("Id")
+                    .HasName("pk_refresh_tokens");
+
+                b.HasIndex("TokenHash")
+                    .IsUnique()
+                    .HasDatabaseName("ix_refresh_tokens_token_hash");
+
+                b.HasIndex("UserId")
+                    .HasDatabaseName("ix_refresh_tokens_user_id");
+
+                b.ToTable("refresh_tokens");
             });
 
         modelBuilder.Entity("Ticketing.Api.Domain.TicketType", b =>
@@ -176,6 +229,45 @@ partial class TicketingDbContextModelSnapshot : ModelSnapshot
                 b.ToTable("ticket_types");
             });
 
+        modelBuilder.Entity("Ticketing.Api.Domain.User", b =>
+            {
+                b.Property<Guid>("Id")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("uuid")
+                    .HasColumnName("id");
+
+                b.Property<DateTimeOffset>("CreatedAt")
+                    .HasColumnType("timestamp with time zone")
+                    .HasColumnName("created_at");
+
+                b.Property<string>("Email")
+                    .IsRequired()
+                    .HasMaxLength(256)
+                    .HasColumnType("character varying(256)")
+                    .HasColumnName("email");
+
+                b.Property<string>("PasswordHash")
+                    .IsRequired()
+                    .HasMaxLength(512)
+                    .HasColumnType("character varying(512)")
+                    .HasColumnName("password_hash");
+
+                b.Property<string>("Role")
+                    .IsRequired()
+                    .HasMaxLength(20)
+                    .HasColumnType("character varying(20)")
+                    .HasColumnName("role");
+
+                b.HasKey("Id")
+                    .HasName("pk_users");
+
+                b.HasIndex("Email")
+                    .IsUnique()
+                    .HasDatabaseName("ix_users_email");
+
+                b.ToTable("users");
+            });
+
         modelBuilder.Entity("Ticketing.Api.Domain.Booking", b =>
             {
                 b.HasOne("Ticketing.Api.Domain.TicketType", "TicketType")
@@ -185,7 +277,36 @@ partial class TicketingDbContextModelSnapshot : ModelSnapshot
                     .IsRequired()
                     .HasConstraintName("fk_bookings_ticket_types_ticket_type_id");
 
+                b.HasOne("Ticketing.Api.Domain.User", null)
+                    .WithMany()
+                    .HasForeignKey("UserId")
+                    .OnDelete(DeleteBehavior.Restrict)
+                    .IsRequired()
+                    .HasConstraintName("fk_bookings_users_user_id");
+
                 b.Navigation("TicketType");
+            });
+
+        modelBuilder.Entity("Ticketing.Api.Domain.Event", b =>
+            {
+                b.HasOne("Ticketing.Api.Domain.User", null)
+                    .WithMany()
+                    .HasForeignKey("OrganizerId")
+                    .OnDelete(DeleteBehavior.Restrict)
+                    .IsRequired()
+                    .HasConstraintName("fk_events_users_organizer_id");
+            });
+
+        modelBuilder.Entity("Ticketing.Api.Domain.RefreshToken", b =>
+            {
+                b.HasOne("Ticketing.Api.Domain.User", "User")
+                    .WithMany()
+                    .HasForeignKey("UserId")
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .IsRequired()
+                    .HasConstraintName("fk_refresh_tokens_users_user_id");
+
+                b.Navigation("User");
             });
 
         modelBuilder.Entity("Ticketing.Api.Domain.TicketType", b =>
