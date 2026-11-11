@@ -1,3 +1,5 @@
+using Ticketing.Api.Common;
+
 namespace Ticketing.Api.Features.Bookings;
 
 public static class BookingEndpoints
@@ -9,17 +11,16 @@ public static class BookingEndpoints
     {
         var group = app.MapGroup("/api/bookings").WithTags("Bookings");
 
-        group.MapPost("/", async Task<Results<Ok<BookingResponse>, NotFound, Conflict<string>>> (
-            BookTicketRequest request, BookingService bookings, CancellationToken ct) =>
-        {
-            var (outcome, booking) = await bookings.BookAsync(request, ct);
-            return outcome switch
-            {
-                BookingOutcome.Booked => TypedResults.Ok(booking!),
-                BookingOutcome.NotFound => TypedResults.NotFound(),
-                _ => TypedResults.Conflict("Sold out."),
-            };
-        });
+        group.MapPost("/", async (BookTicketRequest request, BookingService bookings, CancellationToken ct) =>
+            (await bookings.BookAsync(request, ct)).ToOk())
+        .WithValidation<BookTicketRequest>();
+
+        // userId as a query parameter is temporary: chapter 8 takes it from the access token.
+        group.MapGet("/", async (Guid userId, BookingService bookings, CancellationToken ct) =>
+            TypedResults.Ok(await bookings.ListForUserAsync(userId, ct)));
+
+        group.MapPost("/{id:guid}/cancel", async (Guid id, Guid userId, BookingService bookings, CancellationToken ct) =>
+            (await bookings.CancelAsync(id, userId, ct)).ToNoContent());
 
         return app;
     }

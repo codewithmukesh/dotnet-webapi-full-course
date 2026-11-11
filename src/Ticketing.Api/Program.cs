@@ -1,3 +1,4 @@
+using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 using Serilog;
@@ -30,6 +31,9 @@ var connectionString = builder.Configuration.GetConnectionString("Database")
 builder.Services.AddDbContext<TicketingDbContext>(options => options.UseNpgsql(connectionString));
 
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddValidatorsFromAssemblyContaining<Program>();
+builder.Services.AddProblemDetails();
+
 builder.Services.AddEventFeature();
 builder.Services.AddBookingFeature();
 
