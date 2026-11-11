@@ -9,34 +9,27 @@ public sealed class EventService(TicketingDbContext db, TimeProvider clock, ILog
     public async Task<List<EventSummaryResponse>> ListAsync(CancellationToken ct)
     {
         var now = clock.GetUtcNow();
-        var events = await db.Events
+
+        // One query. Select only what the response needs; projections are never tracked.
+        return await db.Events
             .Where(e => e.StartsAt > now)
             .OrderBy(e => e.StartsAt)
-            .ToListAsync(ct);
-
-        var result = new List<EventSummaryResponse>();
-        foreach (var e in events)
-        {
-            // One extra query per event. Looks harmless with 3 events. Chapter 5.
-            var ticketTypes = await db.TicketTypes.Where(t => t.EventId == e.Id).ToListAsync(ct);
-
-            result.Add(new EventSummaryResponse(
+            .Select(e => new EventSummaryResponse(
                 e.Id,
                 e.Title,
                 e.Venue.Name,
                 e.Venue.City,
                 e.StartsAt,
                 e.Status.ToString(),
-                ticketTypes.Count == 0 ? null : ticketTypes.Min(t => t.Price),
-                ticketTypes.Sum(t => t.QuantityLeft)));
-        }
-
-        return result;
+                e.TicketTypes.Min(t => (decimal?)t.Price),
+                e.TicketTypes.Sum(t => t.QuantityLeft)))
+            .ToListAsync(ct);
     }
 
     public async Task<EventDetailsResponse?> GetAsync(Guid id, CancellationToken ct)
     {
         var found = await db.Events
+            .AsNoTracking()
             .Include(e => e.TicketTypes)
             .FirstOrDefaultAsync(e => e.Id == id, ct);
 

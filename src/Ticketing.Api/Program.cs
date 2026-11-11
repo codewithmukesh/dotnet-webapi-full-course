@@ -3,6 +3,7 @@ using Scalar.AspNetCore;
 using Serilog;
 using Ticketing.Api.Common;
 using Ticketing.Api.Data;
+using Ticketing.Api.Features.Bookings;
 using Ticketing.Api.Features.Events;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -30,6 +31,7 @@ builder.Services.AddDbContext<TicketingDbContext>(options => options.UseNpgsql(c
 
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddEventFeature();
+builder.Services.AddBookingFeature();
 
 builder.Services.AddOpenApi();
 
@@ -46,5 +48,6 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.MapEventEndpoints();
+app.MapBookingEndpoints();
 
 app.Run();

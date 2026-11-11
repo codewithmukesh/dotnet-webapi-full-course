@@ -13,6 +13,9 @@ internal sealed class TicketTypeConfiguration : IEntityTypeConfiguration<TicketT
         builder.Property(t => t.Name).HasMaxLength(100);
         builder.Property(t => t.Price).HasPrecision(18, 2);
 
+        // uint + IsRowVersion() = PostgreSQL xmin. No extra column, Postgres bumps it on every update.
+        builder.Property(t => t.Version).IsRowVersion();
+
         builder.HasOne(t => t.Event)
             .WithMany(e => e.TicketTypes)
             .HasForeignKey(t => t.EventId)
