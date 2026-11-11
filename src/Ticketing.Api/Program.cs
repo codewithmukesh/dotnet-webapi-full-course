@@ -1,6 +1,8 @@
+using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 using Serilog;
 using Ticketing.Api.Common;
+using Ticketing.Api.Data;
 using Ticketing.Api.Features.Events;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -20,6 +22,11 @@ builder.Services.AddOptions<TicketingOptions>()
     .BindConfiguration(TicketingOptions.SectionName)
     .ValidateDataAnnotations()
     .ValidateOnStart();
+
+var connectionString = builder.Configuration.GetConnectionString("Database")
+    ?? throw new InvalidOperationException("Connection string 'Database' is missing.");
+
+builder.Services.AddDbContext<TicketingDbContext>(options => options.UseNpgsql(connectionString));
 
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddEventFeature();
