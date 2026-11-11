@@ -67,6 +67,7 @@ builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddTicketingRateLimiting();
 builder.Services.AddTicketingHealthChecks();
+builder.Services.AddTicketingForwardedHeaders(builder.Configuration);
 
 builder.Services.AddAuthFeature();
 builder.Services.AddEventFeature();
@@ -76,10 +77,18 @@ builder.Services.AddOpenApi(options => options.AddDocumentTransformer<BearerSecu
 
 var app = builder.Build();
 
-// First in the pipeline, so it catches everything after it. Same behaviour in every environment.
+// Very first: everything after it (logging, rate limiting) must see the real client IP and scheme.
+app.UseForwardedHeaders();
+
+// Next, so it catches everything after it. Same behaviour in every environment.
 app.UseExceptionHandler();
 
-app.UseSerilogRequestLogging();
+app.UseSerilogRequestLogging(options =>
+{
+    options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} from {ClientIp} responded {StatusCode} in {Elapsed:0.0} ms";
+    options.EnrichDiagnosticContext = (diagnostics, http) =>
+        diagnostics.Set("ClientIp", http.Connection.RemoteIpAddress?.ToString());
+});
 
 if (app.Environment.IsDevelopment())
 {
