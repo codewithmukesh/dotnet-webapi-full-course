@@ -17,7 +17,7 @@ partial class TicketingDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261111042003_InitialCreate";
+    public override string LastMigrationId => "20261111042133_AddTicketTypeConcurrencyToken";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -134,6 +134,12 @@ partial class TicketingDbContextModelSnapshot : ModelSnapshot
 
                 b.Property<int>("TotalQuantity")
                     .HasColumnType("integer");
+
+                b.Property<uint>("Version")
+                    .IsConcurrencyToken()
+                    .ValueGeneratedOnAddOrUpdate()
+                    .HasColumnType("xid")
+                    .HasColumnName("xmin");
 
                 b.HasKey("Id");
 

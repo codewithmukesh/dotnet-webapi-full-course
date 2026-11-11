@@ -10,5 +10,8 @@ public sealed class TicketType
     public int QuantityLeft { get; set; }
     public int MaxPerUser { get; set; }
 
+    // Mapped to PostgreSQL's xmin system column: the concurrency token.
+    public uint Version { get; init; }
+
     public Event Event { get; init; } = null!;
 }
