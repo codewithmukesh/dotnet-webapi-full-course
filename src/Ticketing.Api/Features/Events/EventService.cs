@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Hybrid;
 using Ticketing.Api.Common;
 using Ticketing.Api.Data;
 using Ticketing.Api.Domain;
@@ -10,6 +11,7 @@ namespace Ticketing.Api.Features.Events;
 
 public sealed class EventService(
     TicketingDbContext db,
+    HybridCache cache,
     IAuthorizationService authorization,
     CurrentUser user,
     TimeProvider clock,
@@ -45,7 +47,13 @@ public sealed class EventService(
             events = events.Where(e => e.StartsAt < toUtc);
         }
 
-        return await events.ToPageAsync(query, ct);
+        // Same query string -> same page. Ticket counts in a cached page can be up to 30s old;
+        // that's fine for browsing, because booking always checks the database (chapter 5).
+        return await cache.GetOrCreateAsync(
+            EventCache.ListKey(query),
+            async token => await events.ToPageAsync(query, token),
+            tags: [EventCache.ListTag],
+            cancellationToken: ct);
     }
 
     public async Task<PagedResponse<EventSummaryResponse>> ListMineAsync(EventQuery query, CancellationToken ct)
@@ -56,23 +64,29 @@ public sealed class EventService(
 
     public async Task<Result<EventDetailsResponse>> GetAsync(Guid id, CancellationToken ct)
     {
-        var found = await db.Events
+        // Published events are public and read far more than they change: cache them.
+        // HybridCache: in-memory (L1) + Redis (L2), and only ONE caller runs the factory per key (no stampede).
+        var published = await cache.GetOrCreateAsync(
+            EventCache.DetailsKey(id),
+            async token => (await db.Events
+                .AsNoTracking()
+                .Include(e => e.TicketTypes)
+                .FirstOrDefaultAsync(e => e.Id == id && e.Status == EventStatus.Published, token))?.ToDetails(),
+            tags: [EventCache.EventTag(id)],
+            cancellationToken: ct);
+
+        if (published is not null)
+        {
+            return published;
+        }
+
+        // Drafts are never cached: only the owner sees them, and they change a lot.
+        var draft = await db.Events
             .AsNoTracking()
             .Include(e => e.TicketTypes)
-            .FirstOrDefaultAsync(e => e.Id == id, ct);
+            .FirstOrDefaultAsync(e => e.Id == id && e.Status == EventStatus.Draft, ct);
 
-        if (found is null)
-        {
-            return EventErrors.NotFound;
-        }
-
-        // A draft is invisible to everyone except its organizer: 404, not 403, so we don't confirm it exists.
-        if (found.Status == EventStatus.Draft && !await IsOwnerAsync(found))
-        {
-            return EventErrors.NotFound;
-        }
-
-        return found.ToDetails();
+        return draft is not null && await IsOwnerAsync(draft) ? draft.ToDetails() : EventErrors.NotFound;
     }
 
     public async Task<EventDetailsResponse> CreateAsync(UpsertEventRequest request, CancellationToken ct)
@@ -117,6 +131,7 @@ public sealed class EventService(
         found.Venue = new Venue(request.Venue, request.City);
         found.StartsAt = request.StartsAt.ToUniversalTime();
         await db.SaveChangesAsync(ct);
+        await InvalidateAsync(id, ct);
 
         return found.ToDetails();
     }
@@ -146,6 +161,7 @@ public sealed class EventService(
 
         found.Status = EventStatus.Published;
         await db.SaveChangesAsync(ct);
+        await InvalidateAsync(id, ct);
         return Result.Success();
     }
 
@@ -169,6 +185,7 @@ public sealed class EventService(
 
         found.Status = EventStatus.Cancelled;
         await db.SaveChangesAsync(ct);
+        await InvalidateAsync(id, ct);
         return Result.Success();
     }
 
@@ -197,6 +214,7 @@ public sealed class EventService(
 
         db.TicketTypes.Add(ticketType);
         await db.SaveChangesAsync(ct);
+        await InvalidateAsync(eventId, ct);
         return ticketType.ToResponse();
     }
 
@@ -239,6 +257,7 @@ public sealed class EventService(
             return EventErrors.ConcurrentUpdate;
         }
 
+        await InvalidateAsync(eventId, ct);
         return ticketType.ToResponse();
     }
 
@@ -270,6 +289,10 @@ public sealed class EventService(
                 b.CreatedAt))
             .ToListAsync(ct);
     }
+
+    // Tags let one call evict every cached entry about this event, plus every cached listing page.
+    private async Task InvalidateAsync(Guid eventId, CancellationToken ct) =>
+        await cache.RemoveByTagAsync([EventCache.EventTag(eventId), EventCache.ListTag], ct);
 
     private async Task<bool> IsOwnerAsync(Event resource) =>
         (await authorization.AuthorizeAsync(user.Principal, resource, Policies.EventOwner)).Succeeded;

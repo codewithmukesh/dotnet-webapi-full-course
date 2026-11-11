@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Hybrid;
 using Scalar.AspNetCore;
 using Serilog;
 using Ticketing.Api.Common;
@@ -31,6 +32,16 @@ var connectionString = builder.Configuration.GetConnectionString("Database")
     ?? throw new InvalidOperationException("Connection string 'Database' is missing.");
 
 builder.Services.AddDbContext<TicketingDbContext>(options => options.UseNpgsql(connectionString));
+
+// Redis is the shared L2 cache. HybridCache finds it automatically (it's the registered IDistributedCache).
+builder.Services.AddStackExchangeRedisCache(options =>
+    options.Configuration = builder.Configuration.GetConnectionString("Redis"));
+
+builder.Services.AddHybridCache(options => options.DefaultEntryOptions = new HybridCacheEntryOptions
+{
+    Expiration = TimeSpan.FromSeconds(30),           // Redis
+    LocalCacheExpiration = TimeSpan.FromSeconds(10), // this server's memory
+});
 
 builder.Services.AddSingleton(TimeProvider.System);
 // Enums as "Organizer", not 1, both in requests and responses (and in the OpenAPI schema).
