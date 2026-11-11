@@ -11,8 +11,9 @@ public static class EventEndpoints
     {
         var group = app.MapGroup("/api/events").WithTags("Events");
 
-        group.MapGet("/", async (EventService events, CancellationToken ct) =>
-            TypedResults.Ok(await events.ListAsync(ct)));
+        group.MapGet("/", async ([AsParameters] EventQuery query, EventService events, CancellationToken ct) =>
+            TypedResults.Ok(await events.ListAsync(query, ct)))
+        .WithValidation<EventQuery>();
 
         group.MapGet("/{id:guid}", GetById).WithName(nameof(GetById));
 

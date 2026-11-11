@@ -59,3 +59,11 @@ internal static class EventMappings
     public static TicketTypeResponse ToResponse(this TicketType t) =>
         new(t.Id, t.Name, t.Price, t.TotalQuantity, t.QuantityLeft, t.MaxPerUser);
 }
+
+public sealed record EventQuery(
+    string? City,
+    string? Search,
+    DateTimeOffset? From,
+    DateTimeOffset? To,
+    string? Cursor,
+    int PageSize = 20);

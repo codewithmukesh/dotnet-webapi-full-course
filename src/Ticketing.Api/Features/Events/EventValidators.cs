@@ -1,4 +1,6 @@
 using FluentValidation;
+using Microsoft.Extensions.Options;
+using Ticketing.Api.Common;
 
 namespace Ticketing.Api.Features.Events;
 
@@ -28,5 +30,21 @@ public sealed class UpsertTicketTypeRequestValidator : AbstractValidator<UpsertT
             .GreaterThanOrEqualTo(1)
             .LessThanOrEqualTo(x => x.TotalQuantity)
             .WithMessage("'Max Per User' can't be more than the total quantity.");
+    }
+}
+
+public sealed class EventQueryValidator : AbstractValidator<EventQuery>
+{
+    public EventQueryValidator(IOptions<TicketingOptions> options)
+    {
+        // Without a cap, ?pageSize=1000000 is a denial of service you wrote yourself.
+        RuleFor(x => x.PageSize).InclusiveBetween(1, options.Value.MaxPageSize);
+        RuleFor(x => x.Search).MaximumLength(100);
+        RuleFor(x => x.City).MaximumLength(100);
+        RuleFor(x => x.To).GreaterThan(x => x.From).When(x => x.From is not null && x.To is not null);
+        RuleFor(x => x.Cursor)
+            .Must(cursor => EventCursor.TryDecode(cursor, out _))
+            .When(x => x.Cursor is not null)
+            .WithMessage("The cursor is invalid. Use the nextCursor value from the previous page.");
     }
 }

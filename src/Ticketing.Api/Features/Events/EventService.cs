@@ -7,14 +7,47 @@ namespace Ticketing.Api.Features.Events;
 
 public sealed class EventService(TicketingDbContext db, TimeProvider clock, ILogger<EventService> logger)
 {
-    public async Task<List<EventSummaryResponse>> ListAsync(CancellationToken ct)
+    public async Task<PagedResponse<EventSummaryResponse>> ListAsync(EventQuery query, CancellationToken ct)
     {
         var now = clock.GetUtcNow();
+        var events = db.Events.Where(e => e.StartsAt > now);
 
-        // One query. Select only what the response needs; projections are never tracked.
-        return await db.Events
-            .Where(e => e.StartsAt > now)
-            .OrderBy(e => e.StartsAt)
+        // Filters: each one is optional and only added when present. No query monster.
+        if (!string.IsNullOrWhiteSpace(query.City))
+        {
+            events = events.Where(e => e.Venue.City == query.City);
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            events = events.Where(e => EF.Functions.ILike(e.Title, $"%{query.Search}%"));
+        }
+
+        if (query.From is { } from)
+        {
+            var fromUtc = from.ToUniversalTime();
+            events = events.Where(e => e.StartsAt >= fromUtc);
+        }
+
+        if (query.To is { } to)
+        {
+            var toUtc = to.ToUniversalTime();
+            events = events.Where(e => e.StartsAt < toUtc);
+        }
+
+        // Keyset pagination: "rows after the last one I saw", using the (StartsAt, Id) index.
+        // The cost is the same for page 1 and page 40,000. OFFSET has to walk past every skipped row.
+        if (EventCursor.TryDecode(query.Cursor, out var cursor))
+        {
+            events = events.Where(e => EF.Functions.GreaterThan(
+                ValueTuple.Create(e.StartsAt, e.Id),
+                ValueTuple.Create(cursor.StartsAt, cursor.Id)));
+        }
+
+        // Fetch one extra row to know if there is a next page.
+        var items = await events
+            .OrderBy(e => e.StartsAt).ThenBy(e => e.Id)
+            .Take(query.PageSize + 1)
             .Select(e => new EventSummaryResponse(
                 e.Id,
                 e.Title,
@@ -25,6 +58,15 @@ public sealed class EventService(TicketingDbContext db, TimeProvider clock, ILog
                 e.TicketTypes.Min(t => (decimal?)t.Price),
                 e.TicketTypes.Sum(t => t.QuantityLeft)))
             .ToListAsync(ct);
+
+        if (items.Count <= query.PageSize)
+        {
+            return new PagedResponse<EventSummaryResponse>(items, null);
+        }
+
+        items.RemoveAt(items.Count - 1);
+        var last = items[^1];
+        return new PagedResponse<EventSummaryResponse>(items, new EventCursor(last.StartsAt, last.Id).Encode());
     }
 
     public async Task<Result<EventDetailsResponse>> GetAsync(Guid id, CancellationToken ct)

@@ -33,6 +33,7 @@ builder.Services.AddDbContext<TicketingDbContext>(options => options.UseNpgsql(c
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 
 builder.Services.AddEventFeature();
 builder.Services.AddBookingFeature();
@@ -40,6 +41,9 @@ builder.Services.AddBookingFeature();
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
+
+// First in the pipeline, so it catches everything after it. Same behaviour in every environment.
+app.UseExceptionHandler();
 
 app.UseSerilogRequestLogging();
 
