@@ -1,4 +1,4 @@
-using Ticketing.Api.Domain;
+using Ticketing.Api.Common;
 
 namespace Ticketing.Api.Features.Events;
 
@@ -16,32 +16,37 @@ public static class EventEndpoints
 
         group.MapGet("/{id:guid}", GetById).WithName(nameof(GetById));
 
-        group.MapPost("/", async (CreateEventRequest request, EventService events, CancellationToken ct) =>
+        group.MapPost("/", async (UpsertEventRequest request, EventService events, CancellationToken ct) =>
         {
             var created = await events.CreateAsync(request, ct);
             return TypedResults.CreatedAtRoute(created, nameof(GetById), new { id = created.Id });
-        });
+        })
+        .WithValidation<UpsertEventRequest>();
 
-        group.MapPut("/{id:guid}", async Task<Results<Ok<EventDetailsResponse>, NotFound>> (
-            Guid id, UpdateEventRequest request, EventService events, CancellationToken ct) =>
-            await events.UpdateAsync(id, request, ct) is { } updated ? TypedResults.Ok(updated) : TypedResults.NotFound());
+        group.MapPut("/{id:guid}", async (Guid id, UpsertEventRequest request, EventService events, CancellationToken ct) =>
+            (await events.UpdateAsync(id, request, ct)).ToOk())
+        .WithValidation<UpsertEventRequest>();
 
-        group.MapPost("/{id:guid}/publish", async Task<Results<NoContent, NotFound>> (
-            Guid id, EventService events, CancellationToken ct) =>
-            await events.SetStatusAsync(id, EventStatus.Published, ct) ? TypedResults.NoContent() : TypedResults.NotFound());
+        group.MapPost("/{id:guid}/publish", async (Guid id, EventService events, CancellationToken ct) =>
+            (await events.PublishAsync(id, ct)).ToNoContent());
 
-        group.MapPost("/{id:guid}/cancel", async Task<Results<NoContent, NotFound>> (
-            Guid id, EventService events, CancellationToken ct) =>
-            await events.SetStatusAsync(id, EventStatus.Cancelled, ct) ? TypedResults.NoContent() : TypedResults.NotFound());
+        group.MapPost("/{id:guid}/cancel", async (Guid id, EventService events, CancellationToken ct) =>
+            (await events.CancelAsync(id, ct)).ToNoContent());
 
-        group.MapPost("/{id:guid}/ticket-types", async Task<Results<Ok<TicketTypeResponse>, NotFound>> (
+        group.MapPost("/{id:guid}/ticket-types", async (
             Guid id, UpsertTicketTypeRequest request, EventService events, CancellationToken ct) =>
-            await events.AddTicketTypeAsync(id, request, ct) is { } created ? TypedResults.Ok(created) : TypedResults.NotFound());
+            (await events.AddTicketTypeAsync(id, request, ct)).ToOk())
+        .WithValidation<UpsertTicketTypeRequest>();
+
+        group.MapPut("/{id:guid}/ticket-types/{ticketTypeId:guid}", async (
+            Guid id, Guid ticketTypeId, UpsertTicketTypeRequest request, EventService events, CancellationToken ct) =>
+            (await events.UpdateTicketTypeAsync(id, ticketTypeId, request, ct)).ToOk())
+        .WithValidation<UpsertTicketTypeRequest>();
 
         return app;
     }
 
-    private static async Task<Results<Ok<EventDetailsResponse>, NotFound>> GetById(
+    private static async Task<Results<Ok<EventDetailsResponse>, ProblemHttpResult>> GetById(
         Guid id, EventService events, CancellationToken ct) =>
-        await events.GetAsync(id, ct) is { } found ? TypedResults.Ok(found) : TypedResults.NotFound();
+        (await events.GetAsync(id, ct)).ToOk();
 }

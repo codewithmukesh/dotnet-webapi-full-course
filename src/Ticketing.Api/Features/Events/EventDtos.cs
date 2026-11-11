@@ -30,14 +30,7 @@ public sealed record TicketTypeResponse(
     int QuantityLeft,
     int MaxPerUser);
 
-public sealed record CreateEventRequest(
-    string Title,
-    string? Description,
-    string Venue,
-    string City,
-    DateTimeOffset StartsAt);
-
-public sealed record UpdateEventRequest(
+public sealed record UpsertEventRequest(
     string Title,
     string? Description,
     string Venue,

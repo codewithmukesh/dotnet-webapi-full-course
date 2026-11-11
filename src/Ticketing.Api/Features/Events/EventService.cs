@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Ticketing.Api.Common;
 using Ticketing.Api.Data;
 using Ticketing.Api.Domain;
 
@@ -26,17 +27,17 @@ public sealed class EventService(TicketingDbContext db, TimeProvider clock, ILog
             .ToListAsync(ct);
     }
 
-    public async Task<EventDetailsResponse?> GetAsync(Guid id, CancellationToken ct)
+    public async Task<Result<EventDetailsResponse>> GetAsync(Guid id, CancellationToken ct)
     {
         var found = await db.Events
             .AsNoTracking()
             .Include(e => e.TicketTypes)
             .FirstOrDefaultAsync(e => e.Id == id, ct);
 
-        return found?.ToDetails();
+        return found is null ? EventErrors.NotFound : found.ToDetails();
     }
 
-    public async Task<EventDetailsResponse> CreateAsync(CreateEventRequest request, CancellationToken ct)
+    public async Task<EventDetailsResponse> CreateAsync(UpsertEventRequest request, CancellationToken ct)
     {
         var created = new Event
         {
@@ -54,12 +55,17 @@ public sealed class EventService(TicketingDbContext db, TimeProvider clock, ILog
         return created.ToDetails();
     }
 
-    public async Task<EventDetailsResponse?> UpdateAsync(Guid id, UpdateEventRequest request, CancellationToken ct)
+    public async Task<Result<EventDetailsResponse>> UpdateAsync(Guid id, UpsertEventRequest request, CancellationToken ct)
     {
         var found = await db.Events.Include(e => e.TicketTypes).FirstOrDefaultAsync(e => e.Id == id, ct);
         if (found is null)
         {
-            return null;
+            return EventErrors.NotFound;
+        }
+
+        if (found.StartsAt <= clock.GetUtcNow())
+        {
+            return EventErrors.AlreadyStarted;
         }
 
         found.Title = request.Title;
@@ -71,24 +77,52 @@ public sealed class EventService(TicketingDbContext db, TimeProvider clock, ILog
         return found.ToDetails();
     }
 
-    public async Task<bool> SetStatusAsync(Guid id, EventStatus status, CancellationToken ct)
+    public async Task<Result> PublishAsync(Guid id, CancellationToken ct)
+    {
+        var found = await db.Events.Include(e => e.TicketTypes).FirstOrDefaultAsync(e => e.Id == id, ct);
+        if (found is null)
+        {
+            return EventErrors.NotFound;
+        }
+
+        if (found.Status != EventStatus.Draft)
+        {
+            return EventErrors.NotDraft;
+        }
+
+        if (found.TicketTypes.Count == 0)
+        {
+            return EventErrors.NoTicketTypes;
+        }
+
+        found.Status = EventStatus.Published;
+        await db.SaveChangesAsync(ct);
+        return Result.Success();
+    }
+
+    public async Task<Result> CancelAsync(Guid id, CancellationToken ct)
     {
         var found = await db.Events.FirstOrDefaultAsync(e => e.Id == id, ct);
         if (found is null)
         {
-            return false;
+            return EventErrors.NotFound;
         }
 
-        found.Status = status;
+        if (found.StartsAt <= clock.GetUtcNow())
+        {
+            return EventErrors.AlreadyStarted;
+        }
+
+        found.Status = EventStatus.Cancelled;
         await db.SaveChangesAsync(ct);
-        return true;
+        return Result.Success();
     }
 
-    public async Task<TicketTypeResponse?> AddTicketTypeAsync(Guid eventId, UpsertTicketTypeRequest request, CancellationToken ct)
+    public async Task<Result<TicketTypeResponse>> AddTicketTypeAsync(Guid eventId, UpsertTicketTypeRequest request, CancellationToken ct)
     {
         if (!await db.Events.AnyAsync(e => e.Id == eventId, ct))
         {
-            return null;
+            return EventErrors.NotFound;
         }
 
         var ticketType = new TicketType
@@ -103,6 +137,40 @@ public sealed class EventService(TicketingDbContext db, TimeProvider clock, ILog
 
         db.TicketTypes.Add(ticketType);
         await db.SaveChangesAsync(ct);
+        return ticketType.ToResponse();
+    }
+
+    public async Task<Result<TicketTypeResponse>> UpdateTicketTypeAsync(
+        Guid eventId, Guid ticketTypeId, UpsertTicketTypeRequest request, CancellationToken ct)
+    {
+        var ticketType = await db.TicketTypes.FirstOrDefaultAsync(t => t.Id == ticketTypeId && t.EventId == eventId, ct);
+        if (ticketType is null)
+        {
+            return EventErrors.TicketTypeNotFound;
+        }
+
+        var sold = ticketType.TotalQuantity - ticketType.QuantityLeft;
+        if (request.TotalQuantity < sold)
+        {
+            return EventErrors.QuantityBelowSold;
+        }
+
+        ticketType.Name = request.Name;
+        ticketType.Price = request.Price;
+        ticketType.TotalQuantity = request.TotalQuantity;
+        ticketType.QuantityLeft = request.TotalQuantity - sold;
+        ticketType.MaxPerUser = request.MaxPerUser;
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // A booking changed QuantityLeft (and xmin) after we read the row. Don't overwrite it.
+            return EventErrors.ConcurrentUpdate;
+        }
+
         return ticketType.ToResponse();
     }
 }
